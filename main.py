@@ -27,13 +27,13 @@ async def tcp_echo_client(host, port, history):
 if __name__ == '__main__':
     parser = configargparse.ArgParser()
     parser.add_argument('--host', required=True, type=str,
-        help='Host address')
+        help='Host address', env_var='HOST')
     parser.add_argument(
-        '--port', required=True, type=str, help=('Host port')
+        '--port', required=True, type=str, help=('Host port'), env_var='PORT'
     )
     parser.add_argument(
         '--history', type=str, default='./log.txt',
-        help='Path to the log file'
+        help='Path to the log file', env_var='HISTORY_PATH'
     )
     args = parser.parse_args()
 
