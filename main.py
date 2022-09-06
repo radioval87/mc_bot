@@ -12,7 +12,7 @@ async def tcp_echo_client(host, port, history):
     while True:
         async with aiofiles.open(history, mode='a') as f:
 
-            data = await reader.read(100)
+            data = await reader.read(1000)
             timestamp = datetime.datetime.now().strftime("%d.%m.%y %H.%M")
             message = f'[{timestamp}] '
 
