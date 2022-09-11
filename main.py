@@ -26,10 +26,10 @@ async def tcp_echo_client(host, port, history):
 
 if __name__ == '__main__':
     parser = configargparse.ArgParser()
-    parser.add_argument('--host', required=True, type=str,
-        help='Host address', env_var='HOST')
+    parser.add_argument('--host', type=str,
+        help='Host address', env_var='HOST', default='minechat.dvmn.org')
     parser.add_argument(
-        '--port', required=True, type=str, help=('Host port'), env_var='PORT'
+        '--port', type=int, help=('Host port'), env_var='PORT', default=5000
     )
     parser.add_argument(
         '--history', type=str, default='./log.txt',
