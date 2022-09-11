@@ -24,6 +24,7 @@ async def tcp_echo_client(host, port, history):
                 message += str(e)
                 print(message)
 
+
 if __name__ == '__main__':
     parser = configargparse.ArgParser()
     parser.add_argument('--host', type=str,

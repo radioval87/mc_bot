@@ -12,7 +12,7 @@ async def read_and_show_in_log(reader):
     return msg
 
 
-async def tcp_writer(host, port):
+async def register(host, port):
     reader, writer = await asyncio.open_connection(host, port)
 
     await read_and_show_in_log(reader)
@@ -44,6 +44,7 @@ async def tcp_writer(host, port):
             finally:
                 break
 
+
 if __name__ == '__main__':
     parser = configargparse.ArgParser()
     parser.add_argument(
@@ -64,4 +65,4 @@ if __name__ == '__main__':
         level=logging.DEBUG
     )
 
-    asyncio.run(tcp_writer(args.host, args.port))
+    asyncio.run(register(args.host, args.port))
