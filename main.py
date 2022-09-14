@@ -13,17 +13,17 @@ async def display_chat(host, port, history):
         while True:
             async with aiofiles.open(history, mode='a') as f:
 
-                data = await reader.read(1000)
+                chat_message = await reader.read(1000)
                 timestamp = datetime.datetime.now().strftime("%d.%m.%y %H.%M")
-                message = f'[{timestamp}] '
+                formatted_message = f'[{timestamp}] '
 
                 try:
-                    message += data.decode()
-                    print(message)
-                    await f.write(message)
+                    formatted_message += chat_message.decode()
+                    print(formatted_message)
+                    await f.write(formatted_message)
                 except Exception as e:
-                    message += str(e)
-                    print(message)
+                    formatted_message += str(e)
+                    print(formatted_message)
 
 
 if __name__ == '__main__':
