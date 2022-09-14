@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--host', type=str,
         help='Host address', env_var='MAIN_HOST', default='minechat.dvmn.org')
     parser.add_argument(
-        '--port', type=int, help=('Host port'), env_var='MAIN_PORT',
+        '--port', type=int, help='Host port', env_var='MAIN_PORT',
         default=5000
     )
     parser.add_argument(

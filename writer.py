@@ -7,7 +7,7 @@ import configargparse
 from common import socket_manager
 
 
-async def read_and_save_to_log(reader):
+async def read_from_chat(reader):
     msg = await reader.read(1000)
     logging.debug(msg.decode())
     return msg
@@ -19,7 +19,7 @@ async def process_token(token):
             with open('.token', mode='r') as f:
                 token = f.read()
         except Exception as e:
-            logging.warning(f'Токен не найден. {str(e)}')
+            logging.warning(f'Token not found. {str(e)}')
 
     token = f'{token}\n'
     return token
@@ -30,22 +30,22 @@ async def login(reader, writer, token):
     writer.write(token.encode())
     writer.drain()
 
-    answer = await read_and_save_to_log(reader)
+    answer = await read_from_chat(reader)
     answer = answer.decode().split('\n')[0]
     
     try:
         if not json.loads(answer):
-            logging.warning('Неизвестный токен. ' 
-                            'Проверьте его или зарегистрируйте заново.')
+            logging.warning('Unknown token. ' 
+                            'Check it or register again.')
             raise SystemExit
     except Exception as e:
-        logging.error(f'Ошибка загрузки токена: {str(e)}')
+        logging.error(f'Error loading token: {str(e)}')
 
 
 async def submit_message(host, port, token, message):
     async with socket_manager(host, port) as (reader, writer):
 
-        await read_and_save_to_log(reader)
+        await read_from_chat(reader)
 
         await login(reader, writer, token)
 
@@ -63,7 +63,7 @@ if __name__ == '__main__':
         env_var='WRITER_HOST', default='minechat.dvmn.org'
     )
     parser.add_argument(
-        '--port', type=int, help=('Host port'), env_var='WRITER_PORT',
+        '--port', type=int, help='Host port', env_var='WRITER_PORT',
         default=5050
     )
     parser.add_argument(
@@ -72,7 +72,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--message', type=str,
-        help='Message to send on connecting', required=True
+        help='Message to send', required=True
     )
     args = parser.parse_args()
 

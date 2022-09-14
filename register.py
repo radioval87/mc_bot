@@ -8,7 +8,7 @@ import configargparse
 from common import socket_manager
 
 
-async def read_and_show_in_log(reader):
+async def read_from_chat(reader):
     msg = await reader.read(1000)
     logging.debug(msg.decode())
     return msg
@@ -16,12 +16,12 @@ async def read_and_show_in_log(reader):
 
 async def register(host, port):
     async with socket_manager(host, port) as (reader, writer):
-        await read_and_show_in_log(reader)
+        await read_from_chat(reader)
 
         writer.write('\n'.encode())
         writer.drain()
 
-        await read_and_show_in_log(reader)
+        await read_from_chat(reader)
 
         while True:
             message = input()
@@ -30,7 +30,7 @@ async def register(host, port):
             writer.drain()
             if message:
                 logging.debug(f'Sent message: {message}')
-                answer = await read_and_show_in_log(reader)
+                answer = await read_from_chat(reader)
                 answer = answer.decode().split('\n')[0]
 
                 try:
@@ -40,9 +40,9 @@ async def register(host, port):
 
                     async with aiofiles.open('.token', mode='w') as f:
                         await f.write(token)
-                    print(f'Вы успешно зарегистрированы как {username}')
+                    print(f'You are successfully registered as {username}')
                 except Exception as e:
-                    print(f'Ошибка регистрации: {str(e)}')
+                    print(f'Registration error: {str(e)}')
                 finally:
                     break
 
@@ -54,7 +54,7 @@ if __name__ == '__main__':
         env_var='REG_HOST', default='minechat.dvmn.org'
     )
     parser.add_argument(
-        '--port', required=False, type=int, help=('Host port'),
+        '--port', required=False, type=int, help='Host port',
         env_var='REG_PORT', default=5050
     )
     args = parser.parse_args()
