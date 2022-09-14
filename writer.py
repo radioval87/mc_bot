@@ -51,10 +51,10 @@ if __name__ == '__main__':
     parser = configargparse.ArgParser()
     parser.add_argument(
         '--host', type=str, help='Host address',
-        env_var='HOST', default='minechat.dvmn.org'
+        env_var='WRITER_HOST', default='minechat.dvmn.org'
     )
     parser.add_argument(
-        '--port', type=int, help=('Host port'), env_var='PORT', default=5050
+        '--port', type=int, help=('Host port'), env_var='WRITER_PORT', default=5050
     )
     parser.add_argument(
         '--token', type=str,

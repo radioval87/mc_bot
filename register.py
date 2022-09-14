@@ -49,11 +49,11 @@ if __name__ == '__main__':
     parser = configargparse.ArgParser()
     parser.add_argument(
         '--host', required=False, type=str, help='Host address',
-        env_var='HOST', default='minechat.dvmn.org'
+        env_var='REG_HOST', default='minechat.dvmn.org'
     )
     parser.add_argument(
         '--port', required=False, type=int, help=('Host port'),
-        env_var='PORT', default=5050
+        env_var='REG_PORT', default=5050
     )
     args = parser.parse_args()
 
