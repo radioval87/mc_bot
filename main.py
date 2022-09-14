@@ -5,7 +5,7 @@ import aiofiles
 import configargparse
 
 
-async def tcp_echo_client(host, port, history):
+async def display_chat(host, port, history):
     reader, _ = await asyncio.open_connection(
         host, port)
 
@@ -38,4 +38,4 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    asyncio.run(tcp_echo_client(args.host, args.port, args.history))
+    asyncio.run(display_chat(args.host, args.port, args.history))
