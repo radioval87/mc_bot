@@ -15,14 +15,14 @@ async def display_chat(host, port, history):
 
                 chat_message = await reader.read(1000)
                 timestamp = datetime.datetime.now().strftime("%d.%m.%y %H.%M")
-                formatted_message = f'[{timestamp}] '
 
                 try:
-                    formatted_message += chat_message.decode()
+                    chat_message = chat_message.decode()
+                    formatted_message = f'[{timestamp}] {chat_message}'
                     print(formatted_message)
                     await f.write(formatted_message)
                 except Exception as e:
-                    formatted_message += str(e)
+                    formatted_message = f'[{timestamp} {str(e)}] '
                     print(formatted_message)
 
 
