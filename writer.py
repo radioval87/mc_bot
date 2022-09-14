@@ -28,6 +28,7 @@ async def process_token(token):
 async def login(reader, writer, token):
     token = await process_token(token)
     writer.write(token.encode())
+    writer.drain()
 
     answer = await read_and_save_to_log(reader)
     answer = answer.decode().split('\n')[0]
@@ -51,6 +52,7 @@ async def submit_message(host, port, token, message):
         writer.write(message.encode())
         writer.write('\n'.encode())
         writer.write('\n'.encode())
+        writer.drain()
         logging.debug(f'Sent message: {message}')
 
 

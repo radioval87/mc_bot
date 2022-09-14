@@ -19,6 +19,7 @@ async def register(host, port):
         await read_and_show_in_log(reader)
 
         writer.write('\n'.encode())
+        writer.drain()
 
         await read_and_show_in_log(reader)
 
@@ -26,7 +27,7 @@ async def register(host, port):
             message = input()
             writer.write(message.encode())
             writer.write('\n'.encode())
-            
+            writer.drain()
             if message:
                 logging.debug(f'Sent message: {message}')
                 answer = await read_and_show_in_log(reader)
