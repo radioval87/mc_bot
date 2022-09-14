@@ -13,31 +13,40 @@ async def read_and_save_to_log(reader):
     return msg
 
 
+async def process_token(token):
+    if not token:
+        try:
+            with open('.token', mode='r') as f:
+                token = f.read()
+        except Exception as e:
+            logging.warning(f'Токен не найден. {str(e)}')
+
+    token = f'{token}\n'
+    return token
+
+
+async def login(reader, writer, token):
+    token = await process_token(token)
+    writer.write(token.encode())
+
+    answer = await read_and_save_to_log(reader)
+    answer = answer.decode().split('\n')[0]
+    
+    try:
+        if not json.loads(answer):
+            logging.warning('Неизвестный токен. ' 
+                            'Проверьте его или зарегистрируйте заново.')
+            raise SystemExit
+    except Exception as e:
+        logging.error(f'Ошибка загрузки токена: {str(e)}')
+
+
 async def submit_message(host, port, token, message):
     async with socket_manager(host, port) as (reader, writer):
 
         await read_and_save_to_log(reader)
 
-        if not token:
-            try:
-                with open('.token', mode='r') as f:
-                    token = f.read()
-            except Exception as e:
-                logging.warning(f'Токен не найден. {str(e)}')
-
-        token = f'{token}\n'
-        writer.write(token.encode())
-
-        answer = await read_and_save_to_log(reader)
-        answer = answer.decode().split('\n')[0]
-        
-        try:
-            if json.loads(answer) is None:
-                logging.warning('Неизвестный токен. ' 
-                                'Проверьте его или зарегистрируйте заново.')
-                raise SystemExit
-        except Exception as e:
-            logging.error(f'Ошибка загрузки токена: {str(e)}')
+        await login(reader, writer, token)
         
         while True:
             if not message:
@@ -45,8 +54,8 @@ async def submit_message(host, port, token, message):
             writer.write(message.encode())
             writer.write('\n'.encode())
             writer.write('\n'.encode())
-            message = None
             logging.debug(f'Sent message: {message}')
+            message = None
 
 
 if __name__ == '__main__':
