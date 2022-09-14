@@ -4,6 +4,8 @@ import logging
 
 import configargparse
 
+from common import socket_manager
+
 
 async def read_and_save_to_log(reader):
     msg = await reader.read(1000)
@@ -12,39 +14,39 @@ async def read_and_save_to_log(reader):
 
 
 async def submit_message(host, port, token, message):
-    reader, writer = await asyncio.open_connection(host, port)
+    async with socket_manager(host, port) as (reader, writer):
 
-    await read_and_save_to_log(reader)
+        await read_and_save_to_log(reader)
 
-    if not token:
+        if not token:
+            try:
+                with open('.token', mode='r') as f:
+                    token = f.read()
+            except Exception as e:
+                logging.warning(f'Токен не найден. {str(e)}')
+
+        token = f'{token}\n'
+        writer.write(token.encode())
+
+        answer = await read_and_save_to_log(reader)
+        answer = answer.decode().split('\n')[0]
+        
         try:
-            with open('.token', mode='r') as f:
-                token = f.read()
+            if json.loads(answer) is None:
+                logging.warning('Неизвестный токен. ' 
+                                'Проверьте его или зарегистрируйте заново.')
+                raise SystemExit
         except Exception as e:
-            logging.warning(f'Токен не найден. {str(e)}')
-
-    token = f'{token}\n'
-    writer.write(token.encode())
-
-    answer = await read_and_save_to_log(reader)
-    answer = answer.decode().split('\n')[0]
-    
-    try:
-        if json.loads(answer) is None:
-            logging.warning('Неизвестный токен. ' 
-                            'Проверьте его или зарегистрируйте заново.')
-            raise SystemExit
-    except Exception as e:
-        logging.error(f'Ошибка загрузки токена: {str(e)}')
-    
-    while True:
-        if not message:
-            message = input()
-        writer.write(message.encode())
-        writer.write('\n'.encode())
-        writer.write('\n'.encode())
-        message = None
-        logging.debug(f'Sent message: {message}')
+            logging.error(f'Ошибка загрузки токена: {str(e)}')
+        
+        while True:
+            if not message:
+                message = input()
+            writer.write(message.encode())
+            writer.write('\n'.encode())
+            writer.write('\n'.encode())
+            message = None
+            logging.debug(f'Sent message: {message}')
 
 
 if __name__ == '__main__':
@@ -54,7 +56,8 @@ if __name__ == '__main__':
         env_var='WRITER_HOST', default='minechat.dvmn.org'
     )
     parser.add_argument(
-        '--port', type=int, help=('Host port'), env_var='WRITER_PORT', default=5050
+        '--port', type=int, help=('Host port'), env_var='WRITER_PORT',
+        default=5050
     )
     parser.add_argument(
         '--token', type=str,
