@@ -9,3 +9,4 @@ async def socket_manager(host, port):
         yield reader, writer
     finally:
         writer.close()
+        await writer.wait_closed()
