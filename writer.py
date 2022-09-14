@@ -47,15 +47,11 @@ async def submit_message(host, port, token, message):
         await read_and_save_to_log(reader)
 
         await login(reader, writer, token)
-        
-        while True:
-            if not message:
-                message = input()
-            writer.write(message.encode())
-            writer.write('\n'.encode())
-            writer.write('\n'.encode())
-            logging.debug(f'Sent message: {message}')
-            message = None
+
+        writer.write(message.encode())
+        writer.write('\n'.encode())
+        writer.write('\n'.encode())
+        logging.debug(f'Sent message: {message}')
 
 
 if __name__ == '__main__':
