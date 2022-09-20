@@ -2,9 +2,15 @@ import asyncio
 import json
 import logging
 
+import aiofiles
 import configargparse
 
-from common import socket_manager
+from common import MessageFormatError, manage_socket, write_to_socket
+
+
+def exit_on_token_error():
+    print('Unknown token. Check it or register again.')
+    raise SystemExit
 
 
 async def read_from_chat(reader):
@@ -16,43 +22,38 @@ async def read_from_chat(reader):
 async def process_token(token):
     if not token:
         try:
-            with open('.token', mode='r') as f:
-                token = f.read()
-        except Exception as e:
-            logging.warning(f'Token not found. {str(e)}')
-
-    token = f'{token}\n'
+            async with aiofiles.open('.token', mode='r') as f:
+                token = await f.read()
+        except FileNotFoundError:
+            logging.error('File with token was not found')  
     return token
 
 
 async def login(reader, writer, token):
     token = await process_token(token)
-    writer.write(token.encode())
-    writer.drain()
+    try:
+        await write_to_socket(writer, [token, '\n'])
+    except MessageFormatError:
+        exit_on_token_error()
 
     answer = await read_from_chat(reader)
     answer = answer.decode().split('\n')[0]
     
     try:
         if not json.loads(answer):
-            logging.warning('Unknown token. ' 
-                            'Check it or register again.')
-            raise SystemExit
+            exit_on_token_error()
     except Exception as e:
         logging.error(f'Error loading token: {str(e)}')
+        raise SystemExit
+
+    logging.debug('Logged in successfully')
 
 
 async def submit_message(host, port, token, message):
-    async with socket_manager(host, port) as (reader, writer):
-
+    async with manage_socket(host, port) as (reader, writer):
         await read_from_chat(reader)
-
         await login(reader, writer, token)
-
-        writer.write(message.encode())
-        writer.write('\n'.encode())
-        writer.write('\n'.encode())
-        writer.drain()
+        await write_to_socket(writer, [message, '\n', '\n'])
         logging.debug(f'Sent message: {message}')
 
 

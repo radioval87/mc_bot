@@ -5,7 +5,7 @@ import logging
 import aiofiles
 import configargparse
 
-from common import socket_manager
+from common import manage_socket, write_to_socket
 
 
 async def read_from_chat(reader):
@@ -15,19 +15,15 @@ async def read_from_chat(reader):
 
 
 async def register(host, port):
-    async with socket_manager(host, port) as (reader, writer):
+    async with manage_socket(host, port) as (reader, writer):
         await read_from_chat(reader)
-
-        writer.write('\n'.encode())
-        writer.drain()
-
+        await write_to_socket(writer, ['\n'])
         await read_from_chat(reader)
 
         while True:
             message = input()
-            writer.write(message.encode())
-            writer.write('\n'.encode())
-            writer.drain()
+            await write_to_socket(writer, [message, '\n'])
+
             if message:
                 logging.debug(f'Sent message: {message}')
                 answer = await read_from_chat(reader)
@@ -42,7 +38,8 @@ async def register(host, port):
                         await f.write(token)
                     print(f'You are successfully registered as {username}')
                 except Exception as e:
-                    print(f'Registration error: {str(e)}')
+                    logging.error(f'Registration error: {str(e)}')
+                    raise e
                 finally:
                     break
 

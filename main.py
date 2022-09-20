@@ -4,11 +4,11 @@ import datetime
 import aiofiles
 import configargparse
 
-from common import socket_manager
+from common import manage_socket
 
 
 async def display_chat(host, port, history):
-    async with socket_manager(host, port) as (reader, _):
+    async with manage_socket(host, port) as (reader, _):
 
         while True:
             async with aiofiles.open(history, mode='a') as f:
