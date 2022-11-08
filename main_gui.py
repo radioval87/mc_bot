@@ -1,11 +1,13 @@
 import asyncio
 import datetime
+import json
+import logging
 
 import aiofiles
 import configargparse
 
 import gui
-from common import manage_socket
+from common import MessageFormatError, manage_socket, write_to_socket
 
 
 async def save_messages(filepath, queue):
@@ -45,7 +47,52 @@ async def read_msgs(host, port, history_path, messages_queue, messages_history_q
                 messages_queue.put_nowait(formatted_message)
 
 
-async def main(host, port, history_path):
+def exit_on_token_error():
+    print('Unknown token. Check it or register again.')
+    raise SystemExit
+
+
+async def process_token():
+    try:
+        async with aiofiles.open('.token', mode='r') as f:
+            token = await f.read()
+    except FileNotFoundError:
+        logging.error('File with token was not found')  
+    return token
+
+
+async def read_from_chat(reader):
+    msg = await reader.read(1000)
+    logging.debug(msg.decode())
+    return msg
+
+
+async def login(host, port):
+    
+    token = await process_token()
+    async with manage_socket(host, port) as (reader, writer):
+        await read_from_chat(reader)
+        try:
+            await write_to_socket(writer, [token, '\n'])
+        except MessageFormatError:
+            exit_on_token_error()
+
+        answer = await read_from_chat(reader)
+        answer = answer.decode().split('\n')[0]
+        
+        answer = json.loads(answer)
+        try:
+            if not answer:
+                exit_on_token_error()
+        except Exception as e:
+            logging.error(f'Error loading token: {str(e)}')
+            raise SystemExit
+
+        logging.debug(f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
+        return True
+
+
+async def main(host, port, writer_port, history_path):
     messages_queue = asyncio.Queue()
     messages_history_queue = asyncio.Queue()
     sending_queue = asyncio.Queue()
@@ -53,8 +100,9 @@ async def main(host, port, history_path):
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
+        login(host, writer_port),
         read_msgs(host, port, history_path, messages_queue, messages_history_queue),
-        send_msgs(host, port, sending_queue, messages_queue)
+        send_msgs(host, port, sending_queue, messages_queue),
     )
 
 
@@ -67,10 +115,22 @@ if __name__ == '__main__':
         default=5000
     )
     parser.add_argument(
+        '--writer_port', type=int, help='Writer Host port', env_var='WRITER_PORT',
+        default=5050
+    )
+    parser.add_argument(
         '--history', type=str, default='./log.txt',
         help='Path to the log file', env_var='HISTORY_PATH'
     )
 
     args = parser.parse_args()
 
-    asyncio.run(main(args.host, args.port, args.history), debug=True)
+    logging.basicConfig(
+        format=(
+            '%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s] '
+            '%(message)s'
+        ),
+        level=logging.DEBUG
+    )
+
+    asyncio.run(main(args.host, args.port, args.writer_port, args.history), debug=True)
