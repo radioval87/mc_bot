@@ -21,6 +21,12 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
+async def send_msgs(host, port, sending_queue, messages_queue):
+    while True:
+        message = await sending_queue.get()
+        messages_queue.put_nowait(message)
+
+
 async def read_msgs(host, port, history_path, messages_queue, messages_history_queue):
     async with manage_socket(host, port) as (reader, _):
         await load_history(history_path, messages_queue)
@@ -44,10 +50,11 @@ async def main(host, port, history_path):
     messages_history_queue = asyncio.Queue()
     sending_queue = asyncio.Queue()
     status_updates_queue = asyncio.Queue()
-    
+
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
         read_msgs(host, port, history_path, messages_queue, messages_history_queue),
+        send_msgs(host, port, sending_queue, messages_queue)
     )
 
 
