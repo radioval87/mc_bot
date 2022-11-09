@@ -23,10 +23,14 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
-async def send_msgs(host, port, sending_queue, messages_queue):
-    while True:
-        message = await sending_queue.get()
-        messages_queue.put_nowait(message)
+async def submit_message(host, port, sending_queue):
+    async with manage_socket(host, port) as (reader, writer):
+        await read_from_chat(reader)
+        await login(reader, writer)
+        while True:
+            message = await sending_queue.get()
+            await write_to_socket(writer, [message, '\n', '\n'])
+            logging.debug(f'Sent message: {message}')
 
 
 async def read_msgs(host, port, history_path, messages_queue, messages_history_queue):
@@ -67,29 +71,25 @@ async def read_from_chat(reader):
     return msg
 
 
-async def login(host, port):
-    
+async def login(reader, writer):    
     token = await process_token()
-    async with manage_socket(host, port) as (reader, writer):
-        await read_from_chat(reader)
-        try:
-            await write_to_socket(writer, [token, '\n'])
-        except MessageFormatError:
+    try:
+        await write_to_socket(writer, [token, '\n'])
+    except MessageFormatError:
+        exit_on_token_error()
+
+    answer = await read_from_chat(reader)
+    answer = answer.decode().split('\n')[0]
+    
+    answer = json.loads(answer)
+    try:
+        if not answer:
             exit_on_token_error()
+    except Exception as e:
+        logging.error(f'Error loading token: {str(e)}')
+        raise SystemExit
 
-        answer = await read_from_chat(reader)
-        answer = answer.decode().split('\n')[0]
-        
-        answer = json.loads(answer)
-        try:
-            if not answer:
-                exit_on_token_error()
-        except Exception as e:
-            logging.error(f'Error loading token: {str(e)}')
-            raise SystemExit
-
-        logging.debug(f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
-        return True
+    logging.debug(f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
 
 
 async def main(host, port, writer_port, history_path):
@@ -100,9 +100,8 @@ async def main(host, port, writer_port, history_path):
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
-        login(host, writer_port),
         read_msgs(host, port, history_path, messages_queue, messages_history_queue),
-        send_msgs(host, port, sending_queue, messages_queue),
+        submit_message(host, writer_port, sending_queue)
     )
 
 
