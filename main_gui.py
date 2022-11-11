@@ -24,32 +24,41 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
-async def submit_message(host, port, sending_queue):
+async def submit_message(host, port, sending_queue, status_updates_queue):
     async with manage_socket(host, port) as (reader, writer):
         await read_from_chat(reader)
-        await login(reader, writer)
+        await login(reader, writer, status_updates_queue)
+        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
         while True:
             message = await sending_queue.get()
             await write_to_socket(writer, [message, '\n', '\n'])
             logging.debug(f'Sent message: {message}')
+        
 
-
-async def read_msgs(host, port, history_path, messages_queue, messages_history_queue):
+async def read_msgs(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue):
     async with manage_socket(host, port) as (reader, _):
         await load_history(history_path, messages_queue)
         while True:
-            chat_message = await reader.read(1000)
+            try:
+                chat_message = await asyncio.wait_for(reader.read(1000), timeout=3.0)
+                status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
+                status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
+            except asyncio.TimeoutError:
+                status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.CLOSED)
+                status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
+                chat_message = None
             timestamp = datetime.datetime.now().strftime("%d.%m.%y %H.%M")
 
-            try:
-                chat_message = chat_message.decode()
-                formatted_message = f'[{timestamp}] {chat_message}'
-                messages_queue.put_nowait(formatted_message)
-                messages_history_queue.put_nowait(formatted_message)
-                await save_messages(history_path, messages_history_queue)
-            except Exception as e:
-                formatted_message = f'[{timestamp}] {str(e)}'
-                messages_queue.put_nowait(formatted_message)
+            if chat_message:
+                try:
+                    chat_message = chat_message.decode()
+                    formatted_message = f'[{timestamp}] {chat_message}'
+                    messages_queue.put_nowait(formatted_message)
+                    messages_history_queue.put_nowait(formatted_message)
+                    await save_messages(history_path, messages_history_queue)
+                except Exception as e:
+                    formatted_message = f'[{timestamp}] {str(e)}'
+                    messages_queue.put_nowait(formatted_message)
 
 
 def exit_on_token_error():
@@ -73,7 +82,7 @@ async def read_from_chat(reader):
     return msg
 
 
-async def login(reader, writer):    
+async def login(reader, writer, status_updates_queue):    
     token = await process_token()
     try:
         await write_to_socket(writer, [token, '\n'])
@@ -92,6 +101,8 @@ async def login(reader, writer):
         raise SystemExit
 
     logging.debug(f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
+    event = gui.NicknameReceived(answer["nickname"])
+    status_updates_queue.put_nowait(event)
 
 
 async def main(host, port, writer_port, history_path):
@@ -100,10 +111,13 @@ async def main(host, port, writer_port, history_path):
     sending_queue = asyncio.Queue()
     status_updates_queue = asyncio.Queue()
 
+    status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
+    status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
-        read_msgs(host, port, history_path, messages_queue, messages_history_queue),
-        submit_message(host, writer_port, sending_queue)
+        read_msgs(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue),
+        submit_message(host, writer_port, sending_queue, status_updates_queue)
     )
 
 
@@ -134,4 +148,4 @@ if __name__ == '__main__':
         level=logging.DEBUG
     )
 
-    asyncio.run(main(args.host, args.port, args.writer_port, args.history), debug=True)
+    asyncio.run(main(args.host, args.port, args.writer_port, args.history))
