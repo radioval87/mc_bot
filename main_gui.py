@@ -31,7 +31,7 @@ async def submit_message(host, port, sending_queue, status_updates_queue):
         status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
         while True:
             message = await sending_queue.get()
-            await write_to_socket(writer, [message, '\n', '\n'])                
+            await write_to_socket(writer, [message, '\n', '\n'])
             logging.debug(f'Sent message: {message}')
         
 
