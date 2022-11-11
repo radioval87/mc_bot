@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import logging
+from tkinter import messagebox
 
 import aiofiles
 import configargparse
@@ -53,6 +54,7 @@ async def read_msgs(host, port, history_path, messages_queue, messages_history_q
 
 def exit_on_token_error():
     print('Unknown token. Check it or register again.')
+    messagebox.showerror("Error", "Unknown token. Check it or register again.")
     raise SystemExit
 
 
