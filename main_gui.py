@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import logging
+import time
 from tkinter import messagebox
 
 import aiofiles
@@ -24,18 +25,20 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
-async def submit_message(host, port, sending_queue, status_updates_queue):
+async def submit_message(host, port, sending_queue, status_updates_queue, watchdog_queue):
     async with manage_socket(host, port) as (reader, writer):
         await read_from_chat(reader)
-        await login(reader, writer, status_updates_queue)
+        watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
+        await login(reader, writer, status_updates_queue, watchdog_queue)
         status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
         while True:
             message = await sending_queue.get()
             await write_to_socket(writer, [message, '\n', '\n'])
             logging.debug(f'Sent message: {message}')
+            watchdog_queue.put_nowait('Connection is alive. Message sent')
         
 
-async def read_msgs(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue):
+async def read_msgs(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue):
     async with manage_socket(host, port) as (reader, _):
         await load_history(history_path, messages_queue)
         while True:
@@ -43,6 +46,7 @@ async def read_msgs(host, port, history_path, messages_queue, messages_history_q
                 chat_message = await asyncio.wait_for(reader.read(1000), timeout=3.0)
                 status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
                 status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
+                watchdog_queue.put_nowait('Connection is alive. New message in chat')
             except asyncio.TimeoutError:
                 status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.CLOSED)
                 status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
@@ -78,11 +82,12 @@ async def process_token():
 
 async def read_from_chat(reader):
     msg = await reader.read(1000)
-    logging.debug(msg.decode())
-    return msg
+    decoded_msg = msg.decode()
+    logging.debug(decoded_msg)
+    return decoded_msg
 
 
-async def login(reader, writer, status_updates_queue):    
+async def login(reader, writer, status_updates_queue, watchdog_queue):    
     token = await process_token()
     try:
         await write_to_socket(writer, [token, '\n'])
@@ -90,7 +95,7 @@ async def login(reader, writer, status_updates_queue):
         exit_on_token_error()
 
     answer = await read_from_chat(reader)
-    answer = answer.decode().split('\n')[0]
+    answer = answer.split('\n')[0]
     
     answer = json.loads(answer)
     try:
@@ -103,6 +108,14 @@ async def login(reader, writer, status_updates_queue):
     logging.debug(f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
     event = gui.NicknameReceived(answer["nickname"])
     status_updates_queue.put_nowait(event)
+    watchdog_queue.put_nowait('Connection is alive. Authorization done')
+
+
+async def watch_for_connection(watchdog_queue):
+    while True:
+        logger = logging.getLogger('watchdog_logger')
+        message = await watchdog_queue.get()
+        logger.info(f'[{time.time()}] {message}')
 
 
 async def main(host, port, writer_port, history_path):
@@ -110,14 +123,16 @@ async def main(host, port, writer_port, history_path):
     messages_history_queue = asyncio.Queue()
     sending_queue = asyncio.Queue()
     status_updates_queue = asyncio.Queue()
+    watchdog_queue = asyncio.Queue()
 
     status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
     status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
 
     await asyncio.gather(
         gui.draw(messages_queue, sending_queue, status_updates_queue),
-        read_msgs(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue),
-        submit_message(host, writer_port, sending_queue, status_updates_queue)
+        read_msgs(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue),
+        submit_message(host, writer_port, sending_queue, status_updates_queue, watchdog_queue),
+        watch_for_connection(watchdog_queue)
     )
 
 
