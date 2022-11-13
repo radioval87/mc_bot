@@ -6,6 +6,7 @@ import time
 from tkinter import messagebox
 
 import aiofiles
+import async_timeout
 import configargparse
 
 import gui
@@ -43,11 +44,14 @@ async def read_msgs(host, port, history_path, messages_queue, messages_history_q
         await load_history(history_path, messages_queue)
         while True:
             try:
-                chat_message = await asyncio.wait_for(reader.read(1000), timeout=3.0)
+                async with async_timeout.timeout(1) as cm:
+                    chat_message = await reader.read(1000)
                 status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
                 status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
                 watchdog_queue.put_nowait('Connection is alive. New message in chat')
             except asyncio.TimeoutError:
+                if cm.expired:
+                    watchdog_queue.put_nowait('1s timeout is elapsed')
                 status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.CLOSED)
                 status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
                 chat_message = None
