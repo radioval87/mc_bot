@@ -3,12 +3,13 @@ import datetime
 import json
 import logging
 import time
+from socket import gaierror
 from tkinter import messagebox
 
 import aiofiles
 import async_timeout
 import configargparse
-from anyio import create_task_group
+from anyio import ExceptionGroup, create_task_group
 from exceptiongroup import catch
 
 import gui
@@ -28,6 +29,19 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
+async def ping_pong(host, port):
+    
+    while True:
+        async with manage_socket(host, port) as (reader, writer):
+            try:
+                async with async_timeout.timeout(1) as cm:
+                    await write_to_socket(writer, [''])
+                    await read_from_chat(reader)
+            except asyncio.TimeoutError:
+                raise gaierror
+        await asyncio.sleep(1)
+
+
 async def handle_connection(
     host, port, writer_port, history_path, messages_queue,
     messages_history_queue, status_updates_queue, watchdog_queue, sending_queue
@@ -37,15 +51,32 @@ async def handle_connection(
         status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.CLOSED)
         status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
 
+    def handle_gaierror_error(exc: gaierror) -> None:
+        status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
+        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+
+    def handle_os_error(exc: OSError) -> None:
+        status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
+        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+        
+
     while True:
-        with catch({ConnectionError: handle_connection_error}):
-            async with create_task_group() as tg:
-                tg.start_soon(watch_for_connection, watchdog_queue)
-                tg.start_soon(send_msgs, host, writer_port, sending_queue,
-                    status_updates_queue, watchdog_queue)
-                tg.start_soon(read_msgs, host, port, history_path,
-                    messages_queue, messages_history_queue, status_updates_queue,
-                    watchdog_queue)
+        try:
+            with catch({
+                gaierror: handle_gaierror_error,
+                ConnectionError: handle_connection_error,
+                OSError: handle_os_error
+            }):
+                async with create_task_group() as tg:
+                    tg.start_soon(ping_pong, host, writer_port)
+                    tg.start_soon(watch_for_connection, watchdog_queue)
+                    tg.start_soon(send_msgs, host, writer_port, sending_queue,
+                        status_updates_queue, watchdog_queue)
+                    tg.start_soon(read_msgs, host, port, history_path,
+                        messages_queue, messages_history_queue, status_updates_queue,
+                        watchdog_queue)
+        except ExceptionGroup:
+            await asyncio.sleep(1)
 
 
 async def send_msgs(
