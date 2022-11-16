@@ -28,22 +28,24 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
-async def handle_connection(host, port):
-    reader, writer = await asyncio.open_connection(host, port)
-    return reader, writer
-
-
-async def submit_message(host, port, sending_queue, status_updates_queue, watchdog_queue):
+async def handle_connection(host, port, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue, sending_queue):
     async with manage_socket(host, port) as (reader, writer):
-        await read_from_chat(reader)
-        watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
-        await login(reader, writer, status_updates_queue, watchdog_queue)
-        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
         while True:
-            message = await sending_queue.get()
-            await write_to_socket(writer, [message, '\n', '\n'])
-            logging.debug(f'Sent message: {message}')
-            watchdog_queue.put_nowait('Connection is alive. Message sent')
+            async with create_task_group() as tg:
+                tg.start_soon(read_msgs, reader, writer, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue)
+                tg.start_soon(submit_message, reader, writer, sending_queue, status_updates_queue, watchdog_queue)
+
+
+async def submit_message(reader, writer, sending_queue, status_updates_queue, watchdog_queue):
+    await read_from_chat(reader)
+    watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
+    await login(reader, writer, status_updates_queue, watchdog_queue)
+    status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
+    while True:
+        message = await sending_queue.get()
+        await write_to_socket(writer, [message, '\n', '\n'])
+        logging.debug(f'Sent message: {message}')
+        watchdog_queue.put_nowait('Connection is alive. Message sent')
         
 
 async def read_msgs(reader, writer, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue):
@@ -51,7 +53,7 @@ async def read_msgs(reader, writer, history_path, messages_queue, messages_histo
     while True:
         try:
             async with async_timeout.timeout(1) as cm:
-                chat_message = await reader.read(1000)
+                chat_message = await read_from_chat(reader)
             status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
             status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
             watchdog_queue.put_nowait('Connection is alive. New message in chat')
@@ -65,7 +67,7 @@ async def read_msgs(reader, writer, history_path, messages_queue, messages_histo
 
         if chat_message:
             try:
-                chat_message = chat_message.decode()
+                # chat_message = chat_message.decode()
                 formatted_message = f'[{timestamp}] {chat_message}'
                 messages_queue.put_nowait(formatted_message)
                 messages_history_queue.put_nowait(formatted_message)
@@ -140,19 +142,17 @@ async def main(host, port, writer_port, history_path):
     status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
     status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
 
-    reader, writer = await asyncio.open_connection(host, port)
-
     def handle_connection_error(exc: ConnectionError) -> None:
         status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.CLOSED)
         status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
 
-    while True:
-        with catch({ConnectionError: handle_connection_error}):
-            async with create_task_group() as tg:
-                tg.start_soon(gui.draw, messages_queue, sending_queue, status_updates_queue)
-                tg.start_soon(submit_message, host, writer_port, sending_queue, status_updates_queue, watchdog_queue)
-                tg.start_soon(read_msgs, reader, writer, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue)
-                tg.start_soon(watch_for_connection, watchdog_queue)
+    with catch({ConnectionError: handle_connection_error}):
+        async with create_task_group() as tg:
+            tg.start_soon(gui.draw, messages_queue, sending_queue, status_updates_queue)
+            tg.start_soon(handle_connection, host, port, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue, sending_queue)
+            # tg.start_soon(submit_message, host, writer_port, sending_queue, status_updates_queue, watchdog_queue)
+            # tg.start_soon(read_msgs, reader, writer, history_path, messages_queue, messages_history_queue, status_updates_queue, watchdog_queue)
+            tg.start_soon(watch_for_connection, watchdog_queue)
 
 
 if __name__ == '__main__':
