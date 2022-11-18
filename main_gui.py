@@ -58,7 +58,6 @@ async def handle_connection(
     def handle_os_error(exc: OSError) -> None:
         status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
         status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
-        
 
     while True:
         try:
@@ -193,12 +192,16 @@ async def main(host, port, writer_port, history_path):
     status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
     status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
 
-    async with create_task_group() as tg:
-        tg.start_soon(gui.draw, messages_queue, sending_queue,
-            status_updates_queue)
-        tg.start_soon(handle_connection, host, port, writer_port, history_path,
-            messages_queue, messages_history_queue, status_updates_queue,
-            watchdog_queue, sending_queue)
+    try:
+        async with create_task_group() as tg:
+            tg.start_soon(gui.draw, messages_queue, sending_queue,
+                status_updates_queue)
+            tg.start_soon(handle_connection, host, port, writer_port, history_path,
+                messages_queue, messages_history_queue, status_updates_queue,
+                watchdog_queue, sending_queue)
+
+    except gui.TkAppClosed:
+        logging.info("Exit the app")
 
 
 if __name__ == '__main__':
@@ -228,4 +231,7 @@ if __name__ == '__main__':
         level=logging.DEBUG
     )
 
-    asyncio.run(main(args.host, args.port, args.writer_port, args.history))
+    try:
+        asyncio.run(main(args.host, args.port, args.writer_port, args.history))
+    except KeyboardInterrupt:
+        logging.info("Exit the app with CTRL+C")

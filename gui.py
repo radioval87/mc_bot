@@ -3,7 +3,7 @@ import tkinter as tk
 from enum import Enum
 from tkinter.scrolledtext import ScrolledText
 
-from anyio import create_task_group
+from anyio import create_task_group, ExceptionGroup
 
 
 class TkAppClosed(Exception):
@@ -127,8 +127,11 @@ async def draw(messages_queue, sending_queue, status_updates_queue):
 
     conversation_panel = ScrolledText(root_frame, wrap='none')
     conversation_panel.pack(side="top", fill="both", expand=True)
-
-    async with create_task_group() as tg:
-        tg.start_soon(update_tk, root_frame)
-        tg.start_soon(update_conversation_history, conversation_panel, messages_queue)
-        tg.start_soon(update_status_panel, status_labels, status_updates_queue)
+    
+    try:
+        async with create_task_group() as tg:
+            tg.start_soon(update_tk, root_frame)
+            tg.start_soon(update_conversation_history, conversation_panel, messages_queue)
+            tg.start_soon(update_status_panel, status_labels, status_updates_queue)
+    except ExceptionGroup:
+        pass
