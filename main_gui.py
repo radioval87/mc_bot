@@ -44,20 +44,27 @@ async def ping_pong(host, port):
 
 async def handle_connection(
     host, port, writer_port, history_path, messages_queue,
-    messages_history_queue, status_updates_queue, watchdog_queue, sending_queue
+    messages_history_queue, status_updates_queue, watchdog_queue,
+    sending_queue
 ):
 
     def handle_connection_error(exc: ConnectionError) -> None:
-        status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.CLOSED)
-        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
+        status_updates_queue.put_nowait(
+            gui.ReadConnectionStateChanged.CLOSED)
+        status_updates_queue.put_nowait(
+            gui.SendingConnectionStateChanged.CLOSED)
 
     def handle_gaierror_error(exc: gaierror) -> None:
-        status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
-        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+        status_updates_queue.put_nowait(
+            gui.ReadConnectionStateChanged.INITIATED)
+        status_updates_queue.put_nowait(
+            gui.SendingConnectionStateChanged.INITIATED)
 
     def handle_os_error(exc: OSError) -> None:
-        status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
-        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+        status_updates_queue.put_nowait(
+            gui.ReadConnectionStateChanged.INITIATED)
+        status_updates_queue.put_nowait(
+            gui.SendingConnectionStateChanged.INITIATED)
 
     while True:
         try:
@@ -72,8 +79,8 @@ async def handle_connection(
                     tg.start_soon(send_msgs, host, writer_port, sending_queue,
                         status_updates_queue, watchdog_queue)
                     tg.start_soon(read_msgs, host, port, history_path,
-                        messages_queue, messages_history_queue, status_updates_queue,
-                        watchdog_queue)
+                        messages_queue, messages_history_queue,
+                        status_updates_queue, watchdog_queue)
         except ExceptionGroup:
             await asyncio.sleep(1)
 
@@ -86,7 +93,8 @@ async def send_msgs(
         await read_from_chat(reader)
         watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
         await login(reader, writer, status_updates_queue, watchdog_queue)
-        status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
+        status_updates_queue.put_nowait(
+            gui.SendingConnectionStateChanged.ESTABLISHED)
         while True:
             message = await sending_queue.get()
             await write_to_socket(writer, [message, '\n', '\n'])
@@ -105,9 +113,12 @@ async def read_msgs(
             async with async_timeout.timeout(1) as cm:
                 async with manage_socket(host, port) as (reader, _):
                     chat_message = await read_from_chat(reader)
-            status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.ESTABLISHED)
-            status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
-            watchdog_queue.put_nowait('Connection is alive. New message in chat')
+            status_updates_queue.put_nowait(
+                gui.ReadConnectionStateChanged.ESTABLISHED)
+            status_updates_queue.put_nowait(
+                gui.SendingConnectionStateChanged.ESTABLISHED)
+            watchdog_queue.put_nowait(
+                'Connection is alive. New message in chat')
         except asyncio.TimeoutError:
             if cm.expired:
                 watchdog_queue.put_nowait('1s timeout is elapsed')
@@ -127,7 +138,8 @@ async def read_msgs(
 
 def exit_on_token_error():
     print('Unknown token. Check it or register again.')
-    messagebox.showerror("Error", "Unknown token. Check it or register again.")
+    messagebox.showerror(
+        "Error", "Unknown token. Check it or register again.")
     raise SystemExit
 
 
@@ -167,7 +179,8 @@ async def login(reader, writer, status_updates_queue, watchdog_queue):
         logging.error(f'Error loading token: {str(e)}')
         raise SystemExit
 
-    logging.debug(f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
+    logging.debug(
+        f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
     event = gui.NicknameReceived(answer["nickname"])
     status_updates_queue.put_nowait(event)
     watchdog_queue.put_nowait('Connection is alive. Authorization done')
@@ -189,16 +202,18 @@ async def main(host, port, writer_port, history_path):
     status_updates_queue = asyncio.Queue()
     watchdog_queue = asyncio.Queue()
 
-    status_updates_queue.put_nowait(gui.ReadConnectionStateChanged.INITIATED)
-    status_updates_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
+    status_updates_queue.put_nowait(
+        gui.ReadConnectionStateChanged.INITIATED)
+    status_updates_queue.put_nowait(
+        gui.SendingConnectionStateChanged.INITIATED)
 
     try:
         async with create_task_group() as tg:
             tg.start_soon(gui.draw, messages_queue, sending_queue,
                 status_updates_queue)
-            tg.start_soon(handle_connection, host, port, writer_port, history_path,
-                messages_queue, messages_history_queue, status_updates_queue,
-                watchdog_queue, sending_queue)
+            tg.start_soon(handle_connection, host, port, writer_port,
+                history_path, messages_queue, messages_history_queue,
+                status_updates_queue, watchdog_queue, sending_queue)
 
     except gui.TkAppClosed:
         logging.info("Exit the app")
@@ -213,8 +228,8 @@ if __name__ == '__main__':
         default=5000
     )
     parser.add_argument(
-        '--writer_port', type=int, help='Writer Host port', env_var='WRITER_PORT',
-        default=5050
+        '--writer_port', type=int, help='Writer Host port',
+        env_var='WRITER_PORT', default=5050
     )
     parser.add_argument(
         '--history', type=str, default='./log.txt',
@@ -232,6 +247,8 @@ if __name__ == '__main__':
     )
 
     try:
-        asyncio.run(main(args.host, args.port, args.writer_port, args.history))
+        asyncio.run(
+            main(args.host, args.port, args.writer_port, args.history)
+        )
     except KeyboardInterrupt:
         logging.info("Exit the app with CTRL+C")
