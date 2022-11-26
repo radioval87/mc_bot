@@ -1,6 +1,6 @@
 # TCP chat
 
-This is a service for interaction with a TCP-based chat.
+This is a service for interaction with a TCP-based chat. It's available with UI or in the console
 
 
 ## Requirements
@@ -27,6 +27,27 @@ pip3 install -r requirements.txt
 ```
 
 ## Run
+
+### UI version
+
+The service consists of two components:
+
+1. To register a new chat user run 
+```bash
+python3 register_gui.py
+```
+
+2. To login to chat as a registered user run 
+```bash
+python3 main_gui.py
+```  
+You can set the chat's address using `--host` argument or by setting a `MAIN_HOST` environment variable  
+You can set the chat's port for receiveing messages using `--port` argument or by setting a `MAIN_PORT` environment variable  
+You can set a path for a chat's history using `--history` argument or by setting a `HISTORY_PATH` environment variable
+You can set the chat's port for sending messages using `--port` argument or by setting a `WRITER_PORT` environment variable  
+
+
+### Console version
 
 The service consists of three components:
 
