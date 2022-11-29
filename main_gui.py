@@ -17,6 +17,10 @@ import gui
 from common import MessageFormatError, manage_socket, write_to_socket
 
 
+logger = logging.getLogger('watchdog_logger')
+watchdog_logger = logging.getLogger('watchdog_logger')
+
+
 async def load_history(filepath, messages_queue):
     try:
         async with aiofiles.open(filepath, mode='r') as f:
@@ -24,7 +28,7 @@ async def load_history(filepath, messages_queue):
             for msg in msgs.split('\n'):
                 messages_queue.put_nowait(msg)
     except FileNotFoundError:
-        logging.error(f'File not found: {filepath}')
+        logger.error(f'File not found: {filepath}')
         raise gui.TkAppClosed
 
 
@@ -98,7 +102,7 @@ async def send_msgs(
             await ping_pong(reader, writer)
             message = await sending_queue.get()
             await write_to_socket(writer, [message, '\n', '\n'])
-            logging.debug(f'Sent message: {message}')
+            logger.debug(f'Sent message: {message}')
             watchdog_queue.put_nowait('Connection is alive. Message sent')
         
 
@@ -154,14 +158,14 @@ async def process_token():
         async with aiofiles.open('.token', mode='r') as f:
             token = await f.read()
     except FileNotFoundError:
-        logging.error('File with token was not found')
+        logger.error('File with token was not found')
     return token
 
 
 async def read_from_chat(reader):
     msg = await reader.read(1000)
     decoded_msg = msg.decode()
-    logging.debug(decoded_msg)
+    logger.debug(decoded_msg)
     return decoded_msg
 
 
@@ -182,10 +186,10 @@ async def login(reader, writer, status_updates_queue, watchdog_queue):
         if not answer:
             exit_on_token_error()
     except Exception as e:
-        logging.error(f'Error loading token: {str(e)}')
+        logger.error(f'Error loading token: {str(e)}')
         raise SystemExit
 
-    logging.debug(
+    logger.debug(
         f'Выполнена авторизация. Пользователь {answer["nickname"]}.')
     event = gui.NicknameReceived(answer["nickname"])
     status_updates_queue.put_nowait(event)
@@ -194,9 +198,8 @@ async def login(reader, writer, status_updates_queue, watchdog_queue):
 
 async def watch_for_connection(watchdog_queue):
     while True:
-        logger = logging.getLogger('watchdog_logger')
         message = await watchdog_queue.get()
-        logger.info(f'[{time.time()}] {message}')
+        watchdog_logger.info(f'[{time.time()}] {message}')
         if message == '1s timeout is elapsed':
             raise ConnectionError
 
@@ -254,11 +257,11 @@ async def main():
             sending_queue)
 
     except gui.TkAppClosed:
-        logging.info("Exit the app")
+        logger.info("Exit the app")
 
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Exit the app with CTRL+C")
+        logger.info("Exit the app with CTRL+C")
