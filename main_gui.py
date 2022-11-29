@@ -23,17 +23,15 @@ async def load_history(filepath, messages_queue):
             messages_queue.put_nowait(msg)
 
 
-async def ping_pong(host, port):
+async def ping_pong(reader, writer):
     
-    while True:
-        async with manage_socket(host, port) as (reader, writer):
-            try:
-                async with async_timeout.timeout(1) as cm:
-                    await write_to_socket(writer, [''])
-                    await read_from_chat(reader)
-            except asyncio.TimeoutError:
-                raise gaierror
-        await asyncio.sleep(1)
+    try:
+        async with async_timeout.timeout(1) as cm:
+            await write_to_socket(writer, [''])
+            await read_from_chat(reader)
+    except asyncio.TimeoutError:
+        raise gaierror
+    await asyncio.sleep(1)
 
 
 async def handle_connection(
@@ -68,7 +66,6 @@ async def handle_connection(
                 OSError: handle_os_error
             }):
                 async with create_task_group() as tg:
-                    tg.start_soon(ping_pong, host, writer_port)
                     tg.start_soon(watch_for_connection, watchdog_queue)
                     tg.start_soon(send_msgs, host, writer_port, sending_queue,
                         status_updates_queue, watchdog_queue)
@@ -90,6 +87,7 @@ async def send_msgs(
         status_updates_queue.put_nowait(
             gui.SendingConnectionStateChanged.ESTABLISHED)
         while True:
+            await ping_pong(reader, writer)
             message = await sending_queue.get()
             await write_to_socket(writer, [message, '\n', '\n'])
             logging.debug(f'Sent message: {message}')
