@@ -16,12 +16,6 @@ import gui
 from common import MessageFormatError, manage_socket, write_to_socket
 
 
-async def save_messages(filepath, queue):
-    msg = await queue.get()
-    async with aiofiles.open(filepath, mode='a') as f:
-        await f.write(msg)
-
-
 async def load_history(filepath, messages_queue):
     async with aiofiles.open(filepath, mode='r') as f:
         msgs = await f.read()
@@ -108,32 +102,38 @@ async def read_msgs(
 ):
 
     await load_history(history_path, messages_queue)
-    while True:
-        try:
-            async with async_timeout.timeout(1) as cm:
-                async with manage_socket(host, port) as (reader, _):
-                    chat_message = await read_from_chat(reader)
-            status_updates_queue.put_nowait(
-                gui.ReadConnectionStateChanged.ESTABLISHED)
-            status_updates_queue.put_nowait(
-                gui.SendingConnectionStateChanged.ESTABLISHED)
-            watchdog_queue.put_nowait(
-                'Connection is alive. New message in chat')
-        except asyncio.TimeoutError:
-            if cm.expired:
-                watchdog_queue.put_nowait('1s timeout is elapsed')
-            chat_message = None
-        timestamp = datetime.datetime.now().strftime("%d.%m.%y %H.%M")
 
-        if chat_message:
+    async def save_message(file_, queue):
+        msg = await queue.get()
+        await file_.write(msg)
+    
+    async with aiofiles.open(history_path, mode='a') as history_file:
+        while True:
             try:
-                formatted_message = f'[{timestamp}] {chat_message}'
-                messages_queue.put_nowait(formatted_message)
-                messages_history_queue.put_nowait(formatted_message)
-                await save_messages(history_path, messages_history_queue)
-            except Exception as e:
-                formatted_message = f'[{timestamp}] {str(e)}'
-                messages_queue.put_nowait(formatted_message)
+                async with async_timeout.timeout(1) as cm:
+                    async with manage_socket(host, port) as (reader, _):
+                        chat_message = await read_from_chat(reader)
+                status_updates_queue.put_nowait(
+                    gui.ReadConnectionStateChanged.ESTABLISHED)
+                status_updates_queue.put_nowait(
+                    gui.SendingConnectionStateChanged.ESTABLISHED)
+                watchdog_queue.put_nowait(
+                    'Connection is alive. New message in chat')
+            except asyncio.TimeoutError:
+                if cm.expired:
+                    watchdog_queue.put_nowait('1s timeout is elapsed')
+                chat_message = None
+            timestamp = datetime.datetime.now().strftime("%d.%m.%y %H.%M")
+
+            if chat_message:
+                try:
+                    formatted_message = f'[{timestamp}] {chat_message}'
+                    messages_queue.put_nowait(formatted_message)
+                    messages_history_queue.put_nowait(formatted_message)
+                    await save_message(history_file, messages_history_queue)
+                except Exception as e:
+                    formatted_message = f'[{timestamp}] {str(e)}'
+                    messages_queue.put_nowait(formatted_message)
 
 
 def exit_on_token_error():
