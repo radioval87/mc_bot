@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 import time
+from functools import partial
 from socket import gaierror
 from tkinter import messagebox
 
@@ -34,36 +35,39 @@ async def ping_pong(reader, writer):
     await asyncio.sleep(1)
 
 
+def handle_connection_error(status_updates_queue, exc: ConnectionError):
+    status_updates_queue.put_nowait(
+        gui.ReadConnectionStateChanged.CLOSED)
+    status_updates_queue.put_nowait(
+        gui.SendingConnectionStateChanged.CLOSED)
+
+
+def handle_gaierror_error(status_updates_queue, exc: gaierror):
+    status_updates_queue.put_nowait(
+        gui.ReadConnectionStateChanged.INITIATED)
+    status_updates_queue.put_nowait(
+        gui.SendingConnectionStateChanged.INITIATED)
+
+
+def handle_os_error(status_updates_queue, exc: OSError):
+    status_updates_queue.put_nowait(
+        gui.ReadConnectionStateChanged.INITIATED)
+    status_updates_queue.put_nowait(
+        gui.SendingConnectionStateChanged.INITIATED)
+
+
 async def handle_connection(
     host, port, writer_port, history_path, messages_queue,
     messages_history_queue, status_updates_queue, watchdog_queue,
     sending_queue
 ):
 
-    def handle_connection_error(exc: ConnectionError) -> None:
-        status_updates_queue.put_nowait(
-            gui.ReadConnectionStateChanged.CLOSED)
-        status_updates_queue.put_nowait(
-            gui.SendingConnectionStateChanged.CLOSED)
-
-    def handle_gaierror_error(exc: gaierror) -> None:
-        status_updates_queue.put_nowait(
-            gui.ReadConnectionStateChanged.INITIATED)
-        status_updates_queue.put_nowait(
-            gui.SendingConnectionStateChanged.INITIATED)
-
-    def handle_os_error(exc: OSError) -> None:
-        status_updates_queue.put_nowait(
-            gui.ReadConnectionStateChanged.INITIATED)
-        status_updates_queue.put_nowait(
-            gui.SendingConnectionStateChanged.INITIATED)
-
     while True:
         try:
             with catch({
-                gaierror: handle_gaierror_error,
-                ConnectionError: handle_connection_error,
-                OSError: handle_os_error
+                gaierror: partial(handle_gaierror_error, status_updates_queue),
+                ConnectionError: partial(handle_connection_error, status_updates_queue),
+                OSError: partial(handle_os_error, status_updates_queue)
             }):
                 async with create_task_group() as tg:
                     tg.start_soon(watch_for_connection, watchdog_queue)
