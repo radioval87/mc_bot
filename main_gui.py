@@ -28,19 +28,19 @@ def set_both_statuses(status_updates_queue, status):
         gui.SendingConnectionStateChanged.__members__.get(status))
 
 
-async def write_to_socket(writer, messages):
+async def write_to_socket(socket_client, messages):
     try:
         for message in messages:
-            await writer.send(message.encode())
+            await socket_client.send(message.encode())
     except BusyResourceError:
         return
     except AttributeError:
         raise MessageFormatError
 
 
-async def read_from_socket(reader):
+async def read_from_socket(socket_client):
     try:
-        chat_message = await reader.receive(1000)
+        chat_message = await socket_client.receive(1000)
     except BusyResourceError:
         return
     decoded_msg = chat_message.decode()
@@ -56,22 +56,17 @@ async def load_history(filepath, messages_queue):
                 messages_queue.put_nowait(msg)
     except FileNotFoundError:
         logger.error(f'File not found: {filepath}')
-        raise gui.TkAppClosed
 
 
-async def ping_pong(writer):
+async def ping_pong(writer_client):
     while True:
         try:
             async with async_timeout.timeout(1):
-                await write_to_socket(writer, [''])
-                await read_from_socket(writer)
+                await write_to_socket(writer_client, [''])
+                await read_from_socket(writer_client)
         except asyncio.TimeoutError:
             raise gaierror
         await asyncio.sleep(1)
-
-
-def handle_connection_error(status_updates_queue, exc: ConnectionError):
-    set_both_statuses(status_updates_queue, 'CLOSED')
 
 
 def handle_gaierror_error(status_updates_queue, exc: gaierror):
@@ -88,6 +83,8 @@ async def handle_connection(
     sending_queue
 ):
 
+    await load_history(history_path, messages_queue)
+
     while True:        
         async with await connect_tcp(host, writer_port) as writer_client:
             async with await connect_tcp(host, port) as reader_client:
@@ -96,19 +93,18 @@ async def handle_connection(
                     with catch({
                         gaierror: partial(handle_gaierror_error,
                                           status_updates_queue),
-                        ConnectionError: partial(handle_connection_error,
-                                                 status_updates_queue),
                         OSError: partial(handle_os_error,
                                          status_updates_queue)
                     }):
+                        await login(writer_client, status_updates_queue,
+                            watchdog_queue,logged_in)
+                        await logged_in.wait()
                         async with create_task_group() as tg:
                             tg.start_soon(watch_for_connection, watchdog_queue)
                             tg.start_soon(send_msgs,
                                 writer_client, sending_queue,
-                                status_updates_queue, watchdog_queue,
-                                logged_in
+                                status_updates_queue, watchdog_queue
                             )
-                            await logged_in.wait()
                             tg.start_soon(read_msgs,
                                 reader_client, history_path,
                                 messages_queue, messages_history_queue,
@@ -120,16 +116,13 @@ async def handle_connection(
 
 
 async def send_msgs(
-    writer_client, sending_queue, status_updates_queue, watchdog_queue,
-    logged_in
+    writer_client, sending_queue, status_updates_queue, watchdog_queue
 ):
 
     await read_from_socket(writer_client)
     watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
     status_updates_queue.put_nowait(
         gui.SendingConnectionStateChanged.ESTABLISHED)
-    await login(writer_client, status_updates_queue, watchdog_queue,
-                logged_in)
 
     while True: 
         message = await sending_queue.get()
@@ -151,8 +144,6 @@ async def read_msgs(
     status_updates_queue, watchdog_queue
 ):
 
-    await load_history(history_path, messages_queue)
-    
     while True:
         try:
             async with async_timeout.timeout(1) as cm:
@@ -196,6 +187,7 @@ async def process_token():
 async def login(
     writer_client, status_updates_queue, watchdog_queue, logged_in
 ):
+    await read_from_socket(writer_client)
 
     token = await process_token()
     try:
@@ -226,8 +218,6 @@ async def watch_for_connection(watchdog_queue):
     while True:
         message = await watchdog_queue.get()
         watchdog_logger.info(f'[{time.time()}] {message}')
-        if message == '1s timeout is elapsed':
-            raise ConnectionError
         await asyncio.sleep(1)
 
 
