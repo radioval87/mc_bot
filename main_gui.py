@@ -10,7 +10,7 @@ from tkinter import messagebox
 import aiofiles
 import async_timeout
 import configargparse
-from anyio import (ExceptionGroup, create_task_group)
+from anyio import ExceptionGroup, create_task_group
 from exceptiongroup import catch
 
 import gui
@@ -31,18 +31,13 @@ async def write_to_socket(writer, messages):
     try:
         for message in messages:
             writer.write(message.encode())
-    except RuntimeError:
-        return
     except AttributeError:
         raise MessageFormatError
     await writer.drain()
 
 
 async def read_from_socket(reader):
-    try:
-        chat_message = await reader.read(1000)
-    except RuntimeError:
-        return
+    chat_message = await reader.read(1000)
     decoded_msg = chat_message.decode()
     logger.debug(decoded_msg)
     return decoded_msg
@@ -86,23 +81,24 @@ async def handle_connection(
     await load_history(history_path, messages_queue)
 
     while True:
-        async with manage_socket(host, writer_port) as (w_reader, w_writer):
-            async with manage_socket(host, port) as (r_reader, _):
-                try:
-                    with catch({
-                        gaierror: partial(handle_gaierror_error,
-                                          status_updates_queue),
-                        OSError: partial(handle_os_error,
-                                         status_updates_queue)
-                    }):
+        try:
+            with catch({
+                gaierror: partial(handle_gaierror_error,
+                                  status_updates_queue),
+                OSError: partial(handle_os_error,
+                                 status_updates_queue)
+            }):
+                async with manage_socket(host, writer_port) as (
+                    w_reader, w_writer):
+                    async with manage_socket(host, port) as (r_reader, _):
+
                         await login(w_reader, w_writer, status_updates_queue,
-                            watchdog_queue
-                        )
-                        
+                            watchdog_queue)
+
                         async with create_task_group() as tg:
                             tg.start_soon(send_msgs,
-                                w_reader, w_writer, sending_queue,
-                                status_updates_queue, watchdog_queue
+                                w_writer, sending_queue,
+                                watchdog_queue
                             )
                             tg.start_soon(read_msgs,
                                 r_reader, history_path,
@@ -110,39 +106,28 @@ async def handle_connection(
                                 status_updates_queue, watchdog_queue
                             )
                             tg.start_soon(ping_pong, w_reader, w_writer)
-                except ExceptionGroup:
-                    await asyncio.sleep(1)
+        except ExceptionGroup:
+            await asyncio.sleep(1)
 
 
-async def send_msgs(
-    w_reader, w_writer, sending_queue, status_updates_queue, watchdog_queue
-):
-
-    await read_from_socket(w_reader)
-    watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
-    status_updates_queue.put_nowait(
-        gui.SendingConnectionStateChanged.ESTABLISHED)
-
+async def send_msgs(w_writer, sending_queue, watchdog_queue):
     while True: 
         message = await sending_queue.get()
         await write_to_socket(w_writer, [message, '\n', '\n'])
-        logger.debug(f'Sent message: {message}')
         watchdog_queue.put_nowait('Connection is alive. Message sent')
 
 
 async def save_message(history_path, queue):
     async with aiofiles.open(history_path, mode='a') as history_file:
-        while True:
-            msg = await queue.get()
-            await history_file.write(msg)
-            await history_file.flush()
+        msg = await queue.get()
+        await history_file.write(msg)
+        await history_file.flush()
 
 
 async def read_msgs(
     r_reader, history_path, messages_queue, messages_history_queue,
     status_updates_queue, watchdog_queue
 ):
-
     while True:
         try:
             async with async_timeout.timeout(1) as cm:
@@ -183,10 +168,11 @@ async def process_token():
     return token
 
 
-async def login(
-    w_reader, w_writer, status_updates_queue, watchdog_queue, #logged_in
-):
+async def login(w_reader, w_writer, status_updates_queue, watchdog_queue):
     await read_from_socket(w_reader)
+    watchdog_queue.put_nowait('Connection is alive. Prompt before auth')
+    status_updates_queue.put_nowait(
+        gui.SendingConnectionStateChanged.ESTABLISHED)
 
     token = await process_token()
     try:
@@ -194,7 +180,9 @@ async def login(
     except MessageFormatError:
         exit_on_token_error()
     
-    answer = await read_from_socket(w_reader)
+    answer = None
+    while not answer or answer == "\n":
+        answer = await read_from_socket(w_reader)
 
     try:
         answer = answer.split('\n')[0]
