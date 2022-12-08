@@ -114,6 +114,7 @@ async def send_msgs(w_writer, sending_queue, watchdog_queue):
     while True: 
         message = await sending_queue.get()
         await write_to_socket(w_writer, [message, '\n', '\n'])
+        logger.debug(f'Sent message: {message}')
         watchdog_queue.put_nowait('Connection is alive. Message sent')
 
 
